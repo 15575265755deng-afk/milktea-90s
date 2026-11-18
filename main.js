@@ -4,10 +4,10 @@
   // ---------- constants ----------
   var LW = 390, LH = 844;          // logical design size
   var MAX_LIVES = 3;
-  var BOIL_TIME = 3.6, POT_SERVINGS = 4;
-  var CHOP_TIME = 1.4, LEMON_SERVINGS = 3;
-  var TUTORIAL_SEC = 28, TUTORIAL_ORDERS = 3;
-  var DIFF_RAMP = 150;
+  var BOIL_TIME = 2.8, POT_SERVINGS = 5;
+  var CHOP_TIME = 1.1, LEMON_SERVINGS = 4;
+  var TUTORIAL_SEC = 45, TUTORIAL_ORDERS = 5;
+  var DIFF_RAMP = 210;
   var FONT = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC",sans-serif';
   var C = {
     wood: '#7a5134', woodDark: '#4a3020', woodLight: '#a8774f',
@@ -398,8 +398,8 @@
       tea = pick(['红茶', '绿茶', '奶茶']);
       tops = [pick(['椰果', '布丁'])];
     } else {
-      tea = Math.random() < lerp(0.18, 0.42, d) ? '柠檬水' : pick(['红茶', '绿茶', '奶茶']);
-      var pearlP = lerp(0.28, 0.58, d), twoP = lerp(0.12, 0.48, d);
+      tea = Math.random() < lerp(0.10, 0.32, d) ? '柠檬水' : pick(['红茶', '绿茶', '奶茶']);
+      var pearlP = lerp(0.18, 0.45, d), twoP = lerp(0.08, 0.35, d);
       if (tea === '柠檬水' && Math.random() < 0.3) {
         tops = [];
       } else {
@@ -420,7 +420,7 @@
     var used = S.customers.filter(Boolean).map(function (c) { return c.kind; });
     var kinds = KINDS.filter(function (k) { return used.indexOf(k) < 0; });
     var slot = pick(free), order = makeOrder(), d = difficulty();
-    var pat = lerp(22, 12, d);
+    var pat = lerp(28, 16, d);
     if (order.tea === '柠檬水') pat += 3;
     if (order.tops.indexOf('珍珠') >= 0) pat += 2.5;
     if (order.tops.length >= 2) pat += 2;
@@ -758,7 +758,7 @@
     if (S.nextSpawn <= 0 || count === 0 && S.nextSpawn > 0.8) {
       if (spawn()) {
         var d = difficulty();
-        S.nextSpawn = S.elapsed < 2 ? 1.2 : lerp(3.8, 1.55, d) * rand(0.85, 1.15);
+        S.nextSpawn = S.elapsed < 2 ? 1.6 : lerp(4.6, 2.1, d) * rand(0.9, 1.15);
       } else S.nextSpawn = 0.3;
     }
     for (var i = 0; i < 3; i++) {
