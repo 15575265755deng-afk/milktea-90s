@@ -14,7 +14,7 @@
     cream: '#f8efdc', creamDeep: '#efe1c3', paper: '#fbf5e8',
     sage: '#8fa676', sageDark: '#6f8a5a', sageLight: '#c9d6b5',
     caramel: '#c98a4b', coral: '#d9685a', coralDark: '#b9503f',
-    ink: '#4a3324', inkSoft: '#7a5a42', gold: '#e3b04b'
+    ink: '#4a3324', inkSoft: '#7a5a42', gold: '#e3b04b', goldLite: '#ffe696'
   };
   var SIZES = ['大杯', '中杯'];
   var TEAS = ['红茶', '绿茶', '奶茶', '柠檬水'];
@@ -49,7 +49,8 @@
   setTimeout(resize, 300);
 
   // ---------- images ----------
-  var IMG = {}, loaded = 0, toLoad = ['bg'].concat(KINDS);
+  var ART = ['红茶', '绿茶', '奶茶', '柠檬水', '珍珠', '椰果', '布丁', '大杯', '中杯'];
+  var IMG = {}, loaded = 0, toLoad = ['bg'].concat(KINDS).concat(ART);
   toLoad.forEach(function (n) {
     var im = new Image();
     im.onload = function () { loaded++; };
@@ -284,14 +285,10 @@
     ctx.save(); ctx.globalAlpha = alpha == null ? 1 : alpha;
     ctx.translate(cx, by); ctx.scale(sc || 1, sc || 1);
     if (cup.shake > 0) ctx.translate(Math.sin(cup.shake * 60) * 4 * cup.shake / 0.4, 0);
-    if (!cup.size) { // empty placeholder
-      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,248,235,0.75)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(-36, -110); ctx.lineTo(36, -110); ctx.lineTo(28, 0); ctx.lineTo(-28, 0); ctx.closePath(); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(74,51,36,0.55)'; rr(-46, -66, 92, 24, 12); ctx.fill();
-      text('先选杯型', 0, -54, 13, '#fff8ec');
-      ctx.restore(); return;
-    }
+    var ghost = !cup.size;
+    if (ghost) cup = { size: '中杯', tea: null, tops: [], fill: 0, topT: {}, shake: cup.shake, sizeT: 0 };
+    if (ghost) ctx.globalAlpha *= 0.72;
+
     var pop = cup.sizeT > 0 ? 1 + Math.sin(cup.sizeT / 0.25 * Math.PI) * 0.08 : 1;
     ctx.scale(pop, pop);
     var d = cupDims(cup.size), tw = d.w, bw = d.w * 0.78, h = d.h;
@@ -383,9 +380,8 @@
     t: 0, elapsed: 0, score: 0, served: 0, combo: 0, maxCombo: 0, tips: 0, mistakes: 0, lost: 0,
     lives: MAX_LIVES, lifeFlash: 0, ending: 0,
     customers: [null, null, null], cup: newCup(), nextSpawn: 0, uid: 0,
-    pot: freshPot(), board: freshBoard(),
     floats: [], parts: [], flying: [], best: 0, newBest: false, paused: false, hint: null, coinPop: 0, comboPop: 0,
-    btnPress: {}, resultT: 0
+    btnPress: {}, resultT: 0, swipe: freshSwipe()
   };
   getLocalData('milktea_best').then(function (v) { if (v && typeof v.best === 'number') S.best = v.best; });
   getLocalData('milktea_muted').then(function (v) { if (v && v.muted) muted = true; });
@@ -432,8 +428,7 @@
     S.t = 0; S.elapsed = 0; S.score = 0; S.served = 0; S.combo = 0; S.maxCombo = 0; S.tips = 0; S.mistakes = 0; S.lost = 0;
     S.lives = MAX_LIVES; S.lifeFlash = 0; S.ending = 0;
     S.customers = [null, null, null]; S.cup = newCup(); S.nextSpawn = 0.4; S.floats = []; S.parts = []; S.flying = [];
-    S.pot = freshPot(); S.board = freshBoard();
-    S.newBest = false; S.hint = null; S.resultT = 0;
+    S.newBest = false; S.hint = null; S.resultT = 0; S.swipe = freshSwipe();
   }
 
   function addFloat(s, x, y, color, sz) { S.floats.push({ s: s, x: x, y: y, c: color || C.gold, sz: sz || 20, t: 0 }); }
@@ -501,8 +496,6 @@
     var cup = S.cup;
     if (!cup.size) { cup.shake = 0.4; hint('先选杯型'); sfx.wrong(); return; }
     if (cup.tea === t) return;
-    if (t === '柠檬水' && !consumeLemon()) { cup.shake = 0.4; hint('先切柠檬'); sfx.wrong(); return; }
-    if (cup.tea === '柠檬水') refundLemon();
     cup.tea = t; cup.fill = 0; sfx.pour();
   }
   function toggleTop(t) {
@@ -511,17 +504,14 @@
     var i = cup.tops.indexOf(t);
     if (i >= 0) {
       cup.tops.splice(i, 1);
-      if (t === '珍珠') refundPearl();
       sfx.tap(); return;
     }
     if (cup.tops.length >= 2) { cup.shake = 0.4; hint('最多加两种小料'); sfx.wrong(); return; }
-    if (t === '珍珠' && !consumePearl()) { cup.shake = 0.4; hint(S.pot.state === 'boiling' ? '珍珠还没煮好' : '珍珠还没煮好'); sfx.wrong(); return; }
     cup.tops.push(t); cup.topT[t] = 0; sfx.drop();
   }
   function trashCup() {
     if (!S.cup.size && !S.cup.tea && !S.cup.tops.length) return;
-    refundPrep(S.cup);
-    S.flying.push({ cup: S.cup, x0: 195, y0: 548, x1: 330, y1: 900, t: 0, dur: 0.35, trash: true });
+    S.flying.push({ cup: S.cup, x0: 195, y0: 518, x1: 318, y1: 700, t: 0, dur: 0.35, trash: true });
     S.cup = newCup(); sfx.trash();
   }
   function sameOrder(cup, o) {
@@ -541,7 +531,7 @@
     });
     if (!target) { // mistake: dump + lose a life
       S.mistakes++;
-      S.flying.push({ cup: cup, x0: 195, y0: 548, x1: 60, y1: 900, t: 0, dur: 0.4, trash: true });
+      S.flying.push({ cup: cup, x0: 195, y0: 518, x1: 60, y1: 900, t: 0, dur: 0.4, trash: true });
       S.cup = newCup();
       loseLife('没人点这杯', 195, 395, 'wrong');
       return;
@@ -555,7 +545,7 @@
     S.score += gain; S.tips += tip; S.served++;
     target.state = 'happy'; target.t = 0;
     var tx = SLOT_X[target.slot];
-    S.flying.push({ cup: cup, x0: 195, y0: 548, x1: tx, y1: 380, t: 0, dur: 0.28 });
+    S.flying.push({ cup: cup, x0: 195, y0: 518, x1: tx, y1: 380, t: 0, dur: 0.28 });
     S.cup = newCup();
     addFloat('+' + gain, tx, 252, C.gold, 24);
     if (tip >= 20) addFloat('小费 +' + tip, tx, 278, '#fff3d6', 15);
@@ -582,9 +572,7 @@
   defButtons();
   var UI_BTN = {
     mute: { x: 336, y: 62, w: 44, h: 36 },
-    pot: { x: 6, y: 448, w: 108, h: 128 },
-    board: { x: 276, y: 448, w: 108, h: 128 },
-    start: { x: 95, y: 690, w: 200, h: 62 },
+    start: { x: 55, y: 566, w: 280, h: 52 },
     save: { x: 30, y: 748, w: 156, h: 56 },
     again: { x: 204, y: 748, w: 156, h: 56 },
     startMute: { x: 330, y: 20, w: 44, h: 36 }
@@ -621,58 +609,101 @@
   function toLogical(e) {
     return { x: (e.clientX - cLeft - offX) / scale, y: (e.clientY - cTop - offY) / scale };
   }
-  canvas.addEventListener('pointerdown', function (e) {
-    e.preventDefault();
-    audio();
-    var p = toLogical(e);
-    onTap(p.x, p.y);
-  });
-  // fallback for very old webviews without pointer events
-  if (!window.PointerEvent) {
-    canvas.addEventListener('touchstart', function (e) {
-      e.preventDefault(); audio();
-      var t = e.changedTouches[0]; var p = toLogical(t); onTap(p.x, p.y);
-    }, { passive: false });
-    canvas.addEventListener('mousedown', function (e) { var p = toLogical(e); onTap(p.x, p.y); });
-  }
-
   function toggleMute() {
     muted = !muted; setLocalData('milktea_muted', { muted: muted });
     if (!muted) sfx.tap();
   }
-
-  function onTap(x, y) {
+  function handleUiTap(x, y) {
     if (S.screen === 'start') {
-      if (hit(UI_BTN.startMute, x, y)) { press('startMute'); toggleMute(); return; }
-      if (hit(UI_BTN.start, x, y) || y > 300) { press('start'); startGame(); }
-      return;
+      if (hit(UI_BTN.startMute, x, y)) { press('startMute'); toggleMute(); return true; }
+      if (hit(UI_BTN.start, x, y) || y > 300) { press('start'); startGame(); return true; }
+      return true;
     }
     if (S.screen === 'result') {
-      if (S.resultT < 0.6) return;
-      if (hit(UI_BTN.save, x, y)) { press('save'); sfx.tap(); saveResultImage(); return; }
-      if (hit(UI_BTN.again, x, y)) { press('again'); startGame(); return; }
-      return;
+      if (S.resultT < 0.6) return true;
+      if (hit(UI_BTN.save, x, y)) { press('save'); sfx.tap(); saveResultImage(); return true; }
+      if (hit(UI_BTN.again, x, y)) { press('again'); startGame(); return true; }
+      return true;
     }
-    if (S.screen !== 'play') return;
-    if (hit(UI_BTN.mute, x, y)) { press('mute'); toggleMute(); return; }
-    if (S.ending > 0) return;
-    if (hit(UI_BTN.pot, x, y)) { tapPot(); return; }
-    if (hit(UI_BTN.board, x, y)) { tapBoard(); return; }
-    for (var i = 0; i < BTN.length; i++) {
-      var b = BTN[i];
-      if (!hit(b, x, y)) continue;
-      press(b.id);
-      if (b.kind === 'size') chooseSize(b.v);
-      else if (b.kind === 'tea') chooseTea(b.v);
-      else if (b.kind === 'top') toggleTop(b.v);
-      else if (b.kind === 'serve') serve();
-      else if (b.kind === 'trash') trashCup();
-      return;
+    if (S.screen !== 'play') return true;
+    if (hit(UI_BTN.mute, x, y)) { press('mute'); toggleMute(); return true; }
+    if (S.ending > 0) return true;
+    var trash = stationByName('清空');
+    if (trash && hitTile(trash, x, y)) { press('trash'); trashCup(); return true; }
+    return false;
+  }
+  function pointerDown(x, y, pid, ev) {
+    audio();
+    if (handleUiTap(x, y)) return;
+    if (S.screen !== 'play' || S.ending > 0) return;
+    startSwipe(x, y, pid);
+    if (ev && ev.pointerId != null && canvas.setPointerCapture) {
+      try { canvas.setPointerCapture(ev.pointerId); } catch (err) {}
     }
   }
+  function pointerMove(x, y, pid) {
+    if (!S.swipe.active) return;
+    if (pid != null && S.swipe.pointerId != null && pid !== S.swipe.pointerId) return;
+    moveSwipe(x, y);
+  }
+  function pointerUp(pid) {
+    if (!S.swipe.active) return;
+    if (pid != null && S.swipe.pointerId != null && pid !== S.swipe.pointerId) return;
+    endSwipe(false);
+  }
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var p = toLogical(e);
+    pointerDown(p.x, p.y, e.pointerId, e);
+  });
+  canvas.addEventListener('pointermove', function (e) {
+    if (!S.swipe.active) return;
+    e.preventDefault();
+    var p = toLogical(e);
+    pointerMove(p.x, p.y, e.pointerId);
+  });
+  canvas.addEventListener('pointerup', function (e) {
+    e.preventDefault();
+    pointerUp(e.pointerId);
+  });
+  canvas.addEventListener('pointercancel', function (e) {
+    pointerUp(e.pointerId);
+  });
+  if (!window.PointerEvent) {
+    canvas.addEventListener('touchstart', function (e) {
+      e.preventDefault();
+      var t = e.changedTouches[0]; var p = toLogical(t);
+      pointerDown(p.x, p.y, t.identifier, null);
+    }, { passive: false });
+    canvas.addEventListener('touchmove', function (e) {
+      if (!S.swipe.active) return;
+      e.preventDefault();
+      var t = e.changedTouches[0]; var p = toLogical(t);
+      pointerMove(p.x, p.y, t.identifier);
+    }, { passive: false });
+    canvas.addEventListener('touchend', function (e) {
+      e.preventDefault();
+      var t = e.changedTouches[0];
+      pointerUp(t ? t.identifier : null);
+    }, { passive: false });
+    canvas.addEventListener('touchcancel', function (e) {
+      var t = e.changedTouches[0];
+      pointerUp(t ? t.identifier : null);
+    }, { passive: false });
+    canvas.addEventListener('mousedown', function (e) {
+      var p = toLogical(e); pointerDown(p.x, p.y, 1, null);
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!S.swipe.active) return;
+      var p = toLogical(e); pointerMove(p.x, p.y, 1);
+    });
+    window.addEventListener('mouseup', function () { pointerUp(1); });
+  }
+
+  function onTap(x, y) { handleUiTap(x, y); }
 
   function startGame() {
-    resetGame(); S.screen = 'play'; sfx.start();
+    resetGame(); S.screen = 'play'; sfx.start(); hint('按订单在食材上划到出杯');
   }
   function endGame() {
     S.screen = 'result'; S.resultT = 0;
@@ -732,24 +763,13 @@
     if (cup.sizeT > 0) cup.sizeT -= dt;
     cup.tops.forEach(function (t) { cup.topT[t] = (cup.topT[t] || 0) + dt; });
 
-    // prep stations
-    if (S.pot.state === 'boiling') {
-      S.pot.t += dt;
-      if (S.pot.t >= BOIL_TIME) {
-        S.pot.state = 'ready';
-        S.pot.servings = POT_SERVINGS + (S.pot.pending || 0);
-        S.pot.pending = 0;
-        sfx.boilDone(); hint('珍珠煮好了');
-      }
+    if (S.swipe.failT > 0) {
+      S.swipe.failT -= dt;
+      if (S.swipe.failT <= 0 && !S.swipe.active) { S.swipe.names = []; S.swipe.failName = null; }
     }
-    if (S.board.state === 'chopping') {
-      S.board.t += dt;
-      if (S.board.t >= CHOP_TIME) {
-        S.board.state = 'ready';
-        S.board.servings = LEMON_SERVINGS + (S.board.pending || 0);
-        S.board.pending = 0;
-        sfx.chopDone(); hint('柠檬切好了');
-      }
+    if (S.swipe.fadeT > 0) {
+      S.swipe.fadeT -= dt;
+      if (S.swipe.fadeT <= 0) S.swipe.fadePts = null;
     }
 
     // spawn
@@ -780,6 +800,390 @@
       }
       if ((c.state === 'happy' && c.t > 1.0) || (c.state === 'angry' && c.t > 1.0)) S.customers[i] = null;
     }
+  }
+
+  // ---------- swipe workbench ----------
+  var BENCH_TOP = 560;
+  var CUP_X = 195, CUP_Y = 518;
+  var DEMO_PATH = ['大杯', '奶茶', '珍珠', '出杯'];
+  var STATIONS = [];
+  function defStations() {
+    STATIONS = [
+      { name: '大杯', kind: 'size', x: 88, y: 644, w: 94, h: 76, r: 36 },
+      { name: '中杯', kind: 'size', x: 188, y: 644, w: 94, h: 76, r: 36 },
+      { name: '清空', kind: 'trash', x: 318, y: 644, w: 86, h: 76, r: 34 },
+      { name: '红茶', kind: 'tea', x: 61, y: 728, w: 84, h: 78, r: 34 },
+      { name: '绿茶', kind: 'tea', x: 151, y: 728, w: 84, h: 78, r: 34 },
+      { name: '奶茶', kind: 'tea', x: 241, y: 728, w: 84, h: 78, r: 34 },
+      { name: '柠檬水', kind: 'tea', x: 331, y: 728, w: 84, h: 78, r: 34 },
+      { name: '珍珠', kind: 'top', x: 105, y: 810, w: 84, h: 78, r: 34 },
+      { name: '椰果', kind: 'top', x: 195, y: 810, w: 84, h: 78, r: 34 },
+      { name: '布丁', kind: 'top', x: 285, y: 810, w: 84, h: 78, r: 34 },
+      { name: '出杯', kind: 'serve', x: 195, y: 498, w: 100, h: 108, r: 46 }
+    ];
+  }
+  defStations();
+  function freshSwipe() {
+    return { active: false, pointerId: null, pts: [], names: [], failT: 0, failName: null, fadePts: null, fadeT: 0 };
+  }
+  function stationByName(name) {
+    for (var i = 0; i < STATIONS.length; i++) if (STATIONS[i].name === name) return STATIONS[i];
+    return null;
+  }
+  function stationAtRadius(x, y, skipTrash) {
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < STATIONS.length; i++) {
+      var s = STATIONS[i];
+      if (skipTrash && s.kind === 'trash') continue;
+      var dx = x - s.x, dy = y - s.y, d2 = dx * dx + dy * dy, rr2 = s.r * s.r;
+      if (d2 <= rr2 && d2 < bestD) { best = s; bestD = d2; }
+    }
+    return best;
+  }
+  function hitTile(s, x, y) {
+    return x >= s.x - s.w / 2 && x <= s.x + s.w / 2 && y >= s.y - s.h / 2 && y <= s.y + s.h / 2;
+  }
+  function orderSteps(o) { return [o.size, o.tea].concat(o.tops); }
+  function pathCompatible(names, order) {
+    if (!names.length) return true;
+    if (names[0] !== order.size) return false;
+    if (names.length === 1) return true;
+    if (names[1] !== order.tea) return false;
+    var used = [];
+    for (var i = 2; i < names.length; i++) {
+      var n = names[i];
+      if (order.tops.indexOf(n) < 0 || used.indexOf(n) >= 0) return false;
+      used.push(n);
+    }
+    return used.length <= order.tops.length;
+  }
+  function recipeComplete(cup) {
+    return !!(cup.size && cup.tea && (cup.tops.length > 0 || cup.tea === '柠檬水'));
+  }
+  function focusCustomer() {
+    var names = (S.swipe && S.swipe.names) ? S.swipe.names.filter(function (n) { return n !== '出杯'; }) : [];
+    var best = null;
+    for (var i = 0; i < S.customers.length; i++) {
+      var c = S.customers[i];
+      if (!c || (c.state !== 'wait' && c.state !== 'enter')) continue;
+      if (names.length && !pathCompatible(names, c.order)) continue;
+      if (!best) { best = c; continue; }
+      var fa = c.patience / c.max, fb = best.patience / best.max;
+      if (fa < fb - 0.001 || (Math.abs(fa - fb) < 0.001 && c.id < best.id)) best = c;
+    }
+    return best;
+  }
+  function nextRequiredName() {
+    var names = (S.swipe && S.swipe.names) ? S.swipe.names.filter(function (n) { return n !== '出杯'; }) : [];
+    var c = focusCustomer();
+    if (c) {
+      if (names.length === 0) return c.order.size;
+      if (names.length === 1) return c.order.tea;
+      var have = names.slice(2);
+      for (var i = 0; i < c.order.tops.length; i++) {
+        if (have.indexOf(c.order.tops[i]) < 0) return c.order.tops[i];
+      }
+      return '出杯';
+    }
+    if (recipeComplete(S.cup)) return '出杯';
+    return null;
+  }
+  function drawArt(name, cx, cy, maxW, maxH, alpha) {
+    var a = alpha == null ? 1 : alpha;
+    if (imgReady(name)) {
+      var im = IMG[name];
+      var sc = Math.min(maxW / im.naturalWidth, maxH / im.naturalHeight);
+      var w = im.naturalWidth * sc, h = im.naturalHeight * sc;
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.drawImage(im, cx - w / 2, cy - h / 2, w, h);
+      ctx.restore();
+      return;
+    }
+    ctx.save(); ctx.globalAlpha = a;
+    drawIcon(name, cx, cy, Math.min(maxW, maxH) * 0.55);
+    ctx.restore();
+  }
+  function drawCounterClean() {
+    var y0 = 418, y1 = 566;
+    if (imgReady('bg')) {
+      var im = IMG.bg, k = LH / im.naturalHeight, w = im.naturalWidth * k;
+      var x = (LW - w) / 2;
+      var srcY = 426 / k, srcH = 24 / k;
+      ctx.drawImage(im, 0, srcY, im.naturalWidth, srcH, x, y0, w, y1 - y0);
+    } else {
+      ctx.fillStyle = '#8a5a38'; ctx.fillRect(0, y0, LW, y1 - y0);
+    }
+  }
+  function softGlow(cx, cy, w, h, color, strength, radius) {
+    ctx.save();
+    for (var i = 4; i >= 1; i--) {
+      ctx.globalAlpha = strength * (0.11 * i);
+      ctx.fillStyle = color;
+      var p = 3.5 * i;
+      rr(cx - w / 2 - p, cy - h / 2 - p, w + 2 * p, h + 2 * p, (radius || 18) + p);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawTrail(pts, fail, alpha) {
+    if (!pts || pts.length < 1) return;
+    ctx.save();
+    ctx.globalAlpha = alpha == null ? 1 : alpha;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    var c1 = fail ? 'rgba(217,104,90,0.35)' : 'rgba(227,176,75,0.35)';
+    var c2 = fail ? 'rgba(255,160,140,0.95)' : 'rgba(255,220,110,0.95)';
+    var c3 = fail ? 'rgba(255,240,230,1)' : 'rgba(255,252,235,1)';
+    function stroke(width, color) {
+      ctx.strokeStyle = color; ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (var i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    if (pts.length >= 2) {
+      stroke(16, c1); stroke(8, c2); stroke(3, c3);
+    }
+    var last = pts[pts.length - 1];
+    ctx.fillStyle = fail ? '#ffe0d6' : '#fff8dc';
+    ctx.strokeStyle = fail ? C.coral : C.gold;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(last.x, last.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  function demoTrailPts() {
+    var pts = [], i, t, a, b, mx, my, cx, cy, u;
+    for (i = 0; i < DEMO_PATH.length - 1; i++) {
+      a = stationByName(DEMO_PATH[i]); b = stationByName(DEMO_PATH[i + 1]);
+      if (!a || !b) continue;
+      mx = (a.x + b.x) / 2; my = (a.y + b.y) / 2;
+      cx = mx + (i === 0 ? 8 : (i === 1 ? -6 : 20));
+      cy = my + (i === 0 ? -6 : (i === 1 ? 4 : 16));
+      for (t = 0; t <= 1.001; t += 0.07) {
+        if (t > 1) t = 1;
+        u = 1 - t;
+        pts.push({
+          x: u * u * a.x + 2 * u * t * cx + t * t * b.x,
+          y: u * u * a.y + 2 * u * t * cy + t * t * b.y
+        });
+        if (t === 1) break;
+      }
+    }
+    return pts;
+  }
+  function drawStationTile(st, selected, isNext, failed, dim) {
+    var w = st.w, h = st.h, cx = st.x, cy = st.y, radius = st.kind === 'serve' ? 20 : 16;
+    if (failed) softGlow(cx, cy, w, h, C.coral, 0.85, radius);
+    else if (selected) softGlow(cx, cy, w, h, C.gold, 0.7, radius);
+    else if (isNext) softGlow(cx, cy, w, h, C.gold, 0.45 + 0.25 * (0.5 + 0.5 * Math.sin(S.elapsed * 7)), radius);
+    ctx.save();
+    ctx.fillStyle = 'rgba(80,50,28,' + (dim ? '0.12' : '0.16') + ')';
+    rr(cx - w / 2 + 1, cy - h / 2 + 3, w, h, radius);
+    ctx.fill();
+    var fill = C.paper, edge = '#d6c09c', tw = 3;
+    if (st.kind === 'trash') { fill = '#96765a'; edge = '#6e523a'; }
+    if (st.name === '大杯' && selected) { fill = '#e8f0dc'; edge = C.sageDark; }
+    if (st.kind === 'serve') { fill = 'rgba(252,247,236,0.95)'; edge = selected || isNext ? C.gold : '#d6c09c'; }
+    if (selected) edge = failed ? C.coral : C.gold;
+    if (failed) edge = C.coral;
+    if (dim && !selected && !isNext && !failed) {
+      fill = '#f4ead6';
+      edge = '#ddcdb0';
+    }
+    rr(cx - w / 2, cy - h / 2, w, h, radius);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.strokeStyle = edge; ctx.lineWidth = (selected || failed || isNext) ? 3 : 1.2; ctx.stroke();
+    if (selected && !failed) {
+      ctx.strokeStyle = C.goldLite; ctx.lineWidth = 2;
+      rr(cx - w / 2 + 3, cy - h / 2 + 3, w - 6, h - 6, Math.max(4, radius - 3));
+      ctx.stroke();
+    }
+    ctx.restore();
+    var tcol = dim && !selected ? '#968270' : C.ink;
+    if (failed) tcol = C.coral;
+    if (st.kind === 'trash') {
+      var ps = pressScale('trash');
+      ctx.save(); ctx.translate(cx, cy); ctx.scale(ps, ps); ctx.translate(-cx, -cy);
+      drawIcon('trash', cx, cy - 8, 22);
+      text('清空', cx, cy + 24, 12, '#fffaf0');
+      ctx.restore();
+      return;
+    }
+    if (st.kind === 'serve') {
+      ctx.save();
+      ctx.fillStyle = 'rgba(70,45,28,0.22)';
+      ctx.beginPath(); ctx.ellipse ? ctx.ellipse(cx, cy + 28, 48, 11, 0, 0, Math.PI * 2) : ctx.arc(cx, cy + 28, 40, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      var cup = S.screen === 'start'
+        ? { size: '大杯', tea: '奶茶', tops: ['珍珠'], fill: 1, topT: { '珍珠': 1 }, shake: 0, sizeT: 0 }
+        : S.cup;
+      var sh = cup.shake > 0 ? Math.sin(cup.shake * 40) * 4 : 0;
+      drawCup(cup, cx + sh, CUP_Y, 0.52, 1, S.screen === 'start');
+      text('出杯', cx, cy + 40, 12, tcol);
+      return;
+    }
+    if (st.kind === 'size') {
+      drawArt(st.name, cx, cy - 8, 44, 52, dim && !selected ? 0.85 : 1);
+      text(st.name, cx, cy + 28, 12, st.name === '大杯' && selected ? '#465a34' : tcol);
+      return;
+    }
+    drawArt(st.name, cx, cy - 9, 58, 50, dim && !selected ? 0.85 : 1);
+    text(st.name, cx, cy + 28, 12, tcol);
+  }
+  function drawWorkbench(mode) {
+    // mode: 'play' | 'start'
+    ctx.fillStyle = '#5c3e28';
+    ctx.fillRect(0, 556, LW, LH - 556);
+    ctx.save();
+    ctx.fillStyle = 'rgba(50,30,15,0.28)';
+    rr(9, BENCH_TOP + 6, LW - 16, LH - BENCH_TOP - 11, 24); ctx.fill();
+    ctx.restore();
+    rr(8, BENCH_TOP, LW - 16, LH - BENCH_TOP - 8, 24);
+    ctx.fillStyle = '#765032'; ctx.fill();
+    ctx.strokeStyle = '#563622'; ctx.lineWidth = 2; ctx.stroke();
+    rr(14, BENCH_TOP + 6, LW - 28, LH - BENCH_TOP - 21, 20);
+    ctx.fillStyle = '#f5e8cf'; ctx.fill();
+    ctx.fillStyle = 'rgba(255,250,235,0.35)';
+    rr(19, BENCH_TOP + 9, LW - 38, 11, 6); ctx.fill();
+
+    var playing = mode === 'play';
+    var banner = playing || mode === 'start';
+    if (mode === 'start') {
+      // start button occupies the banner slot
+    } else {
+      rr(22, 570, LW - 44, 28, 14);
+      ctx.fillStyle = C.paper; ctx.fill();
+      ctx.strokeStyle = '#d6c09c'; ctx.lineWidth = 1; ctx.stroke();
+      text('按订单在食材上划过去', 195, 584, 13, C.ink);
+    }
+
+    var selected = {};
+    var nextName = null;
+    var dimSet = {};
+    var failName = null;
+    if (mode === 'start') {
+      DEMO_PATH.forEach(function (n) { selected[n] = true; });
+    } else {
+      if (S.swipe) {
+        S.swipe.names.forEach(function (n) { selected[n] = true; });
+        if (S.swipe.failT > 0) failName = S.swipe.failName;
+      }
+      nextName = (S.swipe && S.swipe.failT > 0) ? null : nextRequiredName();
+    }
+    STATIONS.forEach(function (st) {
+      if (st.kind === 'serve') return;
+      drawStationTile(st, !!selected[st.name], nextName === st.name, failName === st.name, !!dimSet[st.name]);
+    });
+    // serve well on the counter (drawn later from caller after counter, but we draw it here after bench so z-order:
+    // actually serve well should sit ON the counter, above the bench top visually. Draw it after bench frame so it overlays the bench? Preview has it fully on the counter, not overlapping the bench much.
+    // Tile bottom of 出杯 is 498+54=552, bench top 560 — almost touching, no overlap. Draw serve well now, after clean counter (caller) and we should draw it AFTER bench? If we draw after bench, the tile could cover the bench corner. Bottom 552 < 560, so draw order among bench and serve doesn't overlap. HUD is later.
+    var serve = stationByName('出杯');
+    if (serve) drawStationTile(serve, !!selected['出杯'], nextName === '出杯', failName === '出杯', false);
+
+    if (mode === 'start') drawTrail(demoTrailPts(), false, 0.95);
+    else if (S.swipe) {
+      if (S.swipe.active && S.swipe.pts.length) drawTrail(S.swipe.pts, S.swipe.failT > 0, 1);
+      else if (S.swipe.fadePts && S.swipe.fadeT > 0) {
+        var fa = S.swipe.failT > 0 ? 0.45 : 0.28;
+        drawTrail(S.swipe.fadePts, S.swipe.failT > 0, clamp(S.swipe.fadeT / Math.max(0.01, fa), 0, 1));
+      }
+    }
+  }
+  function addTrailPt(x, y) {
+    var pts = S.swipe.pts;
+    if (!pts.length) { pts.push({ x: x, y: y }); return; }
+    var last = pts[pts.length - 1], dx = x - last.x, dy = y - last.y;
+    if (dx * dx + dy * dy >= 4) {
+      pts.push({ x: x, y: y });
+      if (pts.length > 420) pts.splice(0, pts.length - 420);
+    }
+  }
+  function swipeFail(st, msg) {
+    S.swipe.failT = 0.55;
+    S.swipe.failName = st ? st.name : null;
+    S.cup = newCup();
+    S.cup.shake = 0.4;
+    hint(msg);
+    sfx.wrong();
+    vibrate();
+  }
+  function swipeAddStation(st) {
+    if (!st || st.kind === 'trash') return;
+    if (S.swipe.names.indexOf(st.name) >= 0) return;
+    if (S.swipe.failT > 0) return;
+    if (st.kind === 'serve') {
+      finishSwipeServe();
+      return;
+    }
+    var cup = S.cup;
+    if (st.kind === 'size') {
+      if (cup.size || cup.tea || cup.tops.length) { swipeFail(st, '顺序不对'); return; }
+      S.swipe.names.push(st.name);
+      chooseSize(st.name);
+      return;
+    }
+    if (st.kind === 'tea') {
+      if (!cup.size) { swipeFail(st, '先选杯型'); return; }
+      if (cup.tea || cup.tops.length) { swipeFail(st, '顺序不对'); return; }
+      S.swipe.names.push(st.name);
+      chooseTea(st.name);
+      return;
+    }
+    if (st.kind === 'top') {
+      if (!cup.size || !cup.tea) { swipeFail(st, cup.size ? '先选茶底' : '先选杯型'); return; }
+      if (cup.tops.length >= 2) { swipeFail(st, '最多加两种小料'); return; }
+      S.swipe.names.push(st.name);
+      cup.tops.push(st.name);
+      cup.topT[st.name] = 0;
+      sfx.drop();
+    }
+  }
+  function finishSwipeServe() {
+    var cup = S.cup;
+    if (!recipeComplete(cup)) {
+      swipeFail(stationByName('出杯'), !cup.size ? '先选杯型' : '还没做完哦');
+      return;
+    }
+    S.swipe.names.push('出杯');
+    serve();
+    endSwipe(true);
+  }
+  function startSwipe(x, y, pid) {
+    S.swipe.active = true;
+    S.swipe.pointerId = pid == null ? 1 : pid;
+    S.swipe.pts = [{ x: x, y: y }];
+    S.swipe.names = [];
+    S.swipe.failT = 0;
+    S.swipe.failName = null;
+    S.swipe.fadePts = null;
+    S.swipe.fadeT = 0;
+    S.cup = newCup();
+    swipeAddStation(stationAtRadius(x, y, true));
+  }
+  function moveSwipe(x, y) {
+    if (!S.swipe.active) return;
+    addTrailPt(x, y);
+    if (S.swipe.failT <= 0) swipeAddStation(stationAtRadius(x, y, true));
+  }
+  function endSwipe(served) {
+    if (!S.swipe.active) return;
+    if (!served && S.swipe.failT <= 0) {
+      if (S.cup.size || S.cup.tea || S.cup.tops.length) S.cup = newCup();
+    }
+    S.swipe.active = false;
+    S.swipe.pointerId = null;
+    S.swipe.fadePts = S.swipe.pts;
+    S.swipe.fadeT = S.swipe.failT > 0 ? 0.45 : 0.28;
+    S.swipe.pts = [];
+    if (S.swipe.failT <= 0) {
+      S.swipe.names = [];
+      S.swipe.failName = null;
+    }
+  }
+  function samePointer(e) {
+    if (S.swipe.pointerId == null || e.pointerId == null) return true;
+    return e.pointerId === S.swipe.pointerId;
   }
 
   // ---------- draw: play ----------
@@ -1015,32 +1419,13 @@
     var order = S.customers.filter(Boolean);
     order.forEach(function (c) { drawCustomer(c, SLOT_X[c.slot]); });
     drawCounterFront();
-    drawProps();
-    // current cup
-    drawCup(S.cup, 195, 548, 1, 1, false);
-    var lbl = cupLabel(S.cup);
-    if (lbl && S.cup.size) {
-      ctx.font = font(13, true); var lw = ctx.measureText(lbl).width + 20;
-      ctx.fillStyle = 'rgba(74,51,36,0.72)'; rr(195 - lw / 2, 566, lw, 22, 11); ctx.fill();
-      text(lbl, 195, 577, 13, '#fff8ec');
-    }
-    // flying cups
+    drawCounterClean();
+    drawWorkbench('play');
     S.flying.forEach(function (f) {
       var q = clamp(f.t / f.dur, 0, 1), x = lerp(f.x0, f.x1, q), y = lerp(f.y0, f.y1, q) - Math.sin(q * Math.PI) * (f.trash ? 40 : 80);
       drawCup(f.cup, x, y, f.trash ? 1 - q * 0.4 : 1 - q * 0.45, f.trash ? 1 - q : 1 - q * 0.3, !f.trash);
     });
     order.forEach(function (c) { drawBubble(c); });
-    // buttons
-    var cup = S.cup;
-    BTN.forEach(function (b) {
-      var sel = false;
-      if (b.kind === 'size') sel = cup.size === b.v;
-      if (b.kind === 'tea') sel = cup.tea === b.v;
-      if (b.kind === 'top') sel = cup.tops.indexOf(b.v) >= 0;
-      if (b.kind === 'serve') drawButton(b, '出杯', null, false, 'serve');
-      else if (b.kind === 'trash') drawButton(b, '清空', null, false, 'trash');
-      else drawButton(b, b.v, b.v, sel);
-    });
     drawHUD();
     drawFx();
     if (S.lifeFlash > 0) {
@@ -1055,6 +1440,7 @@
       text(S.hint.s, 195, 118, 15, '#fff8ec'); ctx.restore();
     }
   }
+
   function drawFx() {
     S.parts.forEach(function (p) {
       if (p.coin) {
@@ -1120,19 +1506,18 @@
       ctx.restore();
     });
     drawCounterFront();
-    drawProps();
-    var demo = { size: '大杯', tea: '奶茶', tops: ['珍珠', '布丁'], fill: 1, topT: { '珍珠': 1, '布丁': 1 }, shake: 0, sizeT: 0 };
-    drawCup(demo, 195, 548, 1, 1, true);
+    drawCounterClean();
+    drawWorkbench('start');
     woodSign(195, 128, 286, 96, '忙碌奶茶店', 40);
-    ribbon(195, 200, 220, '先备料，再出杯');
-    // how-to card
-    shadowOn(10, 4); rr(30, 584, 330, 88, 16); ctx.fillStyle = 'rgba(251,245,232,0.96)'; ctx.fill(); shadowOff();
-    text('3 条店命，客人等急了或做错都会扣命', 195, 610, 14.5, C.ink);
-    text('珍珠要先煮、柠檬要先切，备好再出杯', 195, 640, 14.5, C.inkSoft, 'center', false);
+    ribbon(195, 200, 220, '按订单划到出杯');
     var pulse = 1 + Math.sin(t * 4) * 0.03;
-    ctx.save(); ctx.translate(195, 721); ctx.scale(pulse, pulse); ctx.translate(-195, -721);
+    ctx.save(); ctx.translate(195, 592); ctx.scale(pulse, pulse); ctx.translate(-195, -592);
     bigButton(UI_BTN.start, 'start', '开始营业', C.coral, C.coralDark); ctx.restore();
-    text(S.best > 0 ? '最佳成绩  ' + S.best : '第一次开店，加油！', 195, 784, 15, '#fff3d6');
+    var startTip = (S.best > 0 ? '最佳 ' + S.best + '  ·  ' : '') + '3 条店命，划错或等急了都会扣命';
+    ctx.font = font(13, true);
+    var tipW = Math.min(330, ctx.measureText(startTip).width + 28);
+    rr(195 - tipW / 2, 232, tipW, 26, 13); ctx.fillStyle = 'rgba(74,51,36,0.55)'; ctx.fill();
+    text(startTip, 195, 245, 13, '#fff6e4');
     var mb = UI_BTN.startMute;
     ctx.save(); ctx.translate(mb.x + mb.w / 2, mb.y + mb.h / 2);
     ctx.fillStyle = 'rgba(251,245,232,0.9)'; ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.fill();
@@ -1148,6 +1533,9 @@
     drawCustomer({ kind: 'deer', state: 'wait', t: 0 }, 336, 0.95);
     drawCustomer({ kind: 'fox', state: 'wait', t: 0 }, 92, 1.25);
     drawCounterFront();
+    drawCounterClean();
+    ctx.fillStyle = '#5c3e28';
+    ctx.fillRect(0, 556, LW, LH - 556);
     // cups row
     var n = clamp(S.served, 0, 5), tops = [['珍珠'], ['椰果'], ['珍珠', '布丁'], ['布丁'], ['珍珠']], teas = ['奶茶', '红茶', '奶茶', '绿茶', '奶茶'];
     var gap = 62, sx = 195 - (n - 1) * gap / 2;
@@ -1270,16 +1658,11 @@
       S: S, start: startGame, serveFirst: function () {
         var c = null; S.customers.forEach(function (x) { if (x && x.state !== 'happy' && x.state !== 'angry' && (!c || x.id < c.id)) c = x; });
         if (!c) return false;
-        if (c.order.tops.indexOf('珍珠') >= 0 && (S.pot.state !== 'ready' || S.pot.servings < 1)) {
-          S.pot.state = 'ready'; S.pot.servings = Math.max(S.pot.servings, POT_SERVINGS); S.pot.t = BOIL_TIME;
-        }
-        if (c.order.tea === '柠檬水' && (S.board.state !== 'ready' || S.board.servings < 1)) {
-          S.board.state = 'ready'; S.board.servings = Math.max(S.board.servings, LEMON_SERVINGS); S.board.t = CHOP_TIME;
-        }
         chooseSize(c.order.size); chooseTea(c.order.tea); c.order.tops.forEach(function (t) { toggleTop(t); }); serve(); return true;
       },
-      boil: tapPot, chop: tapBoard, buttons: function () { return BTN; },
+      stations: function () { return STATIONS; },
       tap: onTap, end: endGame
     };
   }
+
 })();
