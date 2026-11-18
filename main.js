@@ -140,6 +140,9 @@
     angry: function () { tone(260, 0.18, 'square', 0.06, 0, 180); },
     trash: function () { tone(400, 0.15, 'sine', 0.08, 0, 160); },
     end: function () { [523, 659, 784, 1046].forEach(function (f, i) { tone(f, 0.22, 'triangle', 0.12, i * 0.12); }); },
+    warn: function () { tone(988, 0.25, 'sine', 0.13); tone(1319, 0.35, 'sine', 0.11, 0.14); },
+    warnStrong: function () { [1047, 1319, 1047, 1319].forEach(function (f, i) { tone(f, 0.16, 'triangle', 0.13, i * 0.1); }); },
+    tick: function (n) { tone(1200 + (5 - n) * 120, 0.06, 'square', 0.06); tone(600 + (5 - n) * 60, 0.05, 'triangle', 0.05, 0.03); },
     start: function () { tone(523, 0.1, 'triangle', 0.12); tone(784, 0.16, 'triangle', 0.12, 0.1); }
   };
 
@@ -369,6 +372,7 @@
     S.t = 0; S.elapsed = 0; S.score = 0; S.served = 0; S.combo = 0; S.maxCombo = 0; S.tips = 0; S.mistakes = 0; S.lost = 0;
     S.customers = [null, null, null]; S.cup = newCup(); S.nextSpawn = 0.4; S.floats = []; S.parts = []; S.flying = [];
     S.newBest = false; S.hint = null; S.resultT = 0; S.secondSpawnDone = false;
+    S.warned30 = false; S.warned15 = false; S.banner = null; S.lastTick = 99;
   }
 
   function addFloat(s, x, y, color, sz) { S.floats.push({ s: s, x: x, y: y, c: color || C.gold, sz: sz || 20, t: 0 }); }
@@ -610,6 +614,20 @@
       }
       if ((c.state === 'happy' && c.t > 1.0) || (c.state === 'angry' && c.t > 1.0)) S.customers[i] = null;
     }
+    var leftT = ROUND - S.elapsed;
+    if (!S.warned30 && leftT <= 30) {
+      S.warned30 = true; S.banner = { s: '还有30秒就打烊啦！', t: 0, dur: 1.6, strong: false };
+      sfx.warn(); vibrate();
+    }
+    if (!S.warned15 && leftT <= 15) {
+      S.warned15 = true; S.banner = { s: '最后15秒！快打烊了！', t: 0, dur: 1.9, strong: true };
+      sfx.warnStrong(); vibrate();
+    }
+    if (leftT <= 5 && leftT > 0) {
+      var sec5 = Math.ceil(leftT);
+      if (sec5 < S.lastTick) { S.lastTick = sec5; sfx.tick(sec5); }
+    }
+    if (S.banner) { S.banner.t += dt; if (S.banner.t > S.banner.dur) S.banner = null; }
     if (S.elapsed >= ROUND) endGame();
   }
 
@@ -683,12 +701,13 @@
   function drawHUD() {
     var left = Math.max(0, ROUND - S.elapsed), m = Math.floor(left / 60), sec = Math.ceil(left) - m * 60;
     if (sec === 60) { m++; sec = 0; }
-    var low = left <= 10;
+    var low = left <= 15;
     pill(12, 12, 148, 42);
     drawIcon('clock', 34, 33, 24);
-    var tsc = low ? 1 + Math.max(0, Math.sin((left % 1) * Math.PI)) * 0.12 : 1;
+    var tsc = low ? 1 + Math.max(0, Math.sin(((left * (left <= 5 ? 2 : 1)) % 1) * Math.PI)) * (left <= 5 ? 0.18 : 0.12) : 1;
+    if (low) { ctx.save(); ctx.globalAlpha = 0.82 + 0.18 * Math.sin(S.elapsed * (left <= 5 ? 14 : 8)); rr(12, 12, 148, 42, 21); ctx.fillStyle = C.coral; ctx.fill(); ctx.restore(); drawIcon('clock', 34, 33, 24); }
     ctx.save(); ctx.translate(100, 33); ctx.scale(tsc, tsc);
-    text(m + ':' + (sec < 10 ? '0' : '') + sec, 0, 1, 24, low ? C.coral : C.ink); ctx.restore();
+    text(m + ':' + (sec < 10 ? '0' : '') + sec, 0, 1, 24, low ? '#fffaf2' : C.ink); ctx.restore();
     pill(168, 12, 156, 42);
     var cp = S.coinPop > 0 ? 1 + Math.sin(S.coinPop / 0.3 * Math.PI) * 0.25 : 1;
     ctx.save(); ctx.translate(190, 33); ctx.scale(cp, cp); drawIcon('coin', 0, 0, 26); ctx.restore();
@@ -767,6 +786,7 @@
       else if (b.kind === 'trash') drawButton(b, '清空', null, false, 'trash');
       else drawButton(b, b.v, b.v, sel);
     });
+    if (S.banner) drawBanner(S.banner);
     drawHUD();
     drawFx();
     if (S.hint) {
@@ -777,6 +797,10 @@
       text(S.hint.s, 195, 118, 15, '#fff8ec'); ctx.restore();
     }
     var left = ROUND - S.elapsed;
+    if (left <= 15 && left > 0) { // tense coral edge glow (visual only)
+      var ga = 0.10 + 0.08 * Math.sin(S.elapsed * (left <= 5 ? 14 : 8));
+      ctx.save(); ctx.strokeStyle = C.coral; ctx.globalAlpha = ga; ctx.lineWidth = 14; ctx.strokeRect(0, 0, LW, LH); ctx.restore();
+    }
     if (left <= 3.2 && left > 0) {
       var n = Math.ceil(left), fr = left - Math.floor(left);
       ctx.save(); ctx.globalAlpha = clamp(fr * 1.5, 0, 1);
@@ -785,6 +809,29 @@
       ctx.strokeText(String(n), 0, 0); text(String(n), 0, 0, 64, '#fff3d6');
       ctx.restore();
     }
+  }
+  function drawBanner(b) {
+    // hanging wooden sign drops in, holds, then lifts away; purely visual (taps pass through)
+    var t = b.t, inT = 0.35, outT = 0.3, y;
+    if (t < inT) y = lerp(-90, 104, easeOutBack(t / inT));
+    else if (t > b.dur - outT) y = lerp(104, -90, (t - (b.dur - outT)) / outT);
+    else y = 104 + Math.sin((t - inT) * 7) * 3 * Math.max(0, 1 - (t - inT));
+    var w = b.strong ? 320 : 290, h = b.strong ? 70 : 62, cx = 195;
+    var sw = b.strong ? Math.sin(t * 22) * 0.025 * Math.max(0, 1 - t / 1.2) : Math.sin(t * 9) * 0.02 * Math.max(0, 1 - t);
+    ctx.save();
+    ctx.translate(cx, 0); ctx.rotate(sw); ctx.translate(-cx, 0);
+    ctx.strokeStyle = '#6b4a2f'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(cx - w * 0.32, y - h / 2); ctx.lineTo(cx - w * 0.32, 0); ctx.moveTo(cx + w * 0.32, y - h / 2); ctx.lineTo(cx + w * 0.32, 0); ctx.stroke();
+    shadowOn(14, 6); rr(cx - w / 2, y - h / 2, w, h, 14); ctx.fillStyle = b.strong ? C.coralDark : '#7a4e30'; ctx.fill(); shadowOff();
+    rr(cx - w / 2 + 5, y - h / 2 + 5, w - 10, h - 10, 11); ctx.fillStyle = b.strong ? C.coral : '#9a6640'; ctx.fill();
+    ctx.strokeStyle = 'rgba(80,40,20,0.25)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(cx - w / 2 + 14, y - 6); ctx.lineTo(cx + w / 2 - 14, y - 4); ctx.stroke();
+    var sz = b.strong ? 26 : 23, ps = b.strong ? 1 + Math.max(0, Math.sin(t * 12)) * 0.05 : 1;
+    ctx.translate(cx, y + 2); ctx.scale(ps, ps);
+    ctx.font = font(sz, true); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 5; ctx.strokeStyle = b.strong ? '#7a2a1e' : '#4a2e1a'; ctx.strokeText(b.s, 0, 0);
+    ctx.fillStyle = '#fff6e4'; ctx.fillText(b.s, 0, 0);
+    ctx.restore();
   }
   function drawFx() {
     S.parts.forEach(function (p) {
