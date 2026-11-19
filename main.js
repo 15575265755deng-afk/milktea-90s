@@ -181,14 +181,8 @@
     var g = c || ctx;
     if (imgReady('bg')) {
       var im = IMG.bg, k = LH / im.naturalHeight, w = im.naturalWidth * k;
-      g.drawImage(im, (LW - w) / 2, 0, w, LH);
+      g.drawImage(im, BG_X, 0, w, LH);
     } else { g.fillStyle = '#d9c3a0'; g.fillRect(0, 0, LW, LH); }
-  }
-  function drawCounterFront() { // re-draw counter part of bg over customers
-    if (!imgReady('bg')) { ctx.fillStyle = C.wood; ctx.fillRect(0, COUNTER_Y, LW, LH - COUNTER_Y); return; }
-    var im = IMG.bg, k = LH / im.naturalHeight, w = im.naturalWidth * k;
-    var sy = COUNTER_Y / k;
-    ctx.drawImage(im, 0, sy, im.naturalWidth, im.naturalHeight - sy, (LW - w) / 2, COUNTER_Y, w, LH - COUNTER_Y);
   }
 
   // ---------- icon drawing ----------
@@ -956,98 +950,101 @@
   }
 
   // static bench + shelf, rendered once into an offscreen canvas
-  var benchCache = null, benchK = 0;
-  var BENCH_Y0 = 428;
-  function seeded(seed) { var s = seed; return function () { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; }; }
-  function woodTex(w, h, base, stripe, contrast, seed, gradA, gradB) {
-    var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-    var g = cv.getContext('2d'), im = g.createImageData(w, h), d = im.data, rnd = seeded(seed);
-    var ph = [rnd() * 6.28, rnd() * 6.28, rnd() * 6.28, rnd() * 6.28];
-    var nx = new Array(w);
-    for (var x = 0; x < w; x++) {
-      var n = 0;
-      for (var q = 0; q < 4; q++) n += Math.sin(x / w * 6.28 * (q + 1) * 0.6 + ph[q]) * (6 / (q + 1)) * (h / 120);
-      nx[x] = n;
+  var benchCache = null, benchK = 0, counterCache = null, counterK = 0;
+  // counter top re-mapped from the café background itself, so the work surface is the
+  // same painted counter the customers stand behind (edges straightened, no new board)
+  var BG_X = -58;                       // shift bg left so the tea jar/tap sits off-screen
+  var CTOP = 420, CSURF = 590, CLIP = 606; // back edge, front edge of top, bottom of lip
+  function bgEdge(sx) { // measured edges of the painted counter in bg.webp source px
+    return { back: 626 + 0.088 * sx, surf: 858 + 0.124 * sx, lip: 894 + 0.126 * sx };
+  }
+  function buildCounter(k) {
+    var cv = document.createElement('canvas');
+    cv.width = Math.round(LW * k); cv.height = Math.round((LH - CTOP) * k);
+    var g = cv.getContext('2d'), im = IMG.bg, kb = LH / im.naturalHeight, H = im.naturalHeight;
+    var y1 = (CSURF - CTOP) * k, y2 = (CLIP - CTOP) * k, y3 = cv.height;
+    for (var j = 0; j < cv.width; j++) {
+      var sx = ((j + 0.5) / k - BG_X) / kb, e = bgEdge(sx), sxi = clamp(sx - 0.5, 0, im.naturalWidth - 1);
+      g.drawImage(im, sxi, e.back, 1, e.surf - e.back, j, 0, 1.4, y1);
+      g.drawImage(im, sxi, e.surf, 1, e.lip - e.surf, j, y1, 1.4, y2 - y1);
+      g.drawImage(im, sxi, e.lip, 1, H - e.lip, j, y2, 1.4, y3 - y2);
     }
-    for (var y = 0; y < h; y++) {
-      var lt = gradA + (gradB - gradA) * (y / Math.max(1, h - 1));
-      for (var x2 = 0; x2 < w; x2++) {
-        var v = Math.sin((y + nx[x2]) / stripe * Math.PI) * 0.5 + 0.5; v = v * v * v;
-        var f = (rnd() - 0.5) * 6;
-        var i = (y * w + x2) * 4;
-        d[i] = clamp((base[0] - v * contrast + f) * lt, 0, 255);
-        d[i + 1] = clamp((base[1] - v * contrast + f) * lt, 0, 255);
-        d[i + 2] = clamp((base[2] - v * contrast + f) * lt, 0, 255);
-        d[i + 3] = 255;
-      }
-    }
-    g.putImageData(im, 0, 0);
     return cv;
   }
-  function buildBench(k) {
+  function buildBench(k) { // transparent overlay: light, coaster numbers, built-in shelf
     var cv = document.createElement('canvas');
-    cv.width = Math.round(LW * k); cv.height = Math.round((LH - BENCH_Y0) * k);
+    cv.width = Math.round(LW * k); cv.height = Math.round((LH - CTOP) * k);
     var prev = ctx; ctx = cv.getContext('2d');
-    ctx.scale(k, k); ctx.translate(0, -BENCH_Y0);
-    var B = BENCH;
-    // dark wood floor behind the bench
-    ctx.fillStyle = '#583a25'; ctx.fillRect(0, BENCH_Y0, LW, LH - BENCH_Y0);
-    var sg = ctx.createLinearGradient(0, BENCH_Y0, 0, B.top + 6);
-    sg.addColorStop(0, 'rgba(40,24,14,0.0)'); sg.addColorStop(1, 'rgba(40,24,14,0.55)');
-    ctx.fillStyle = sg; ctx.fillRect(0, BENCH_Y0, LW, B.top + 6 - BENCH_Y0);
-    // drop shadow under the bench
-    ctx.save(); ctx.shadowColor = 'rgba(20,10,4,0.75)'; ctx.shadowBlur = 14 * k; ctx.shadowOffsetY = 6 * k;
-    ctx.fillStyle = '#3a2416'; rr(B.fx0, B.bot - 14, B.fx1 - B.fx0, 16, 8); ctx.fill(); ctx.restore();
-    // counter top in perspective (row by row)
-    var tw = Math.round((B.fx1 - B.fx0) * k), th = Math.round((B.front - B.top) * k);
-    var tex = woodTex(tw, th, [196, 142, 92], 7 * k, 26, 3, 0.86, 1.05);
-    for (var y = 0; y < th; y++) {
-      var t = y / Math.max(1, th - 1);
-      var x0 = B.bx0 + (B.fx0 - B.bx0) * t, x1 = B.bx1 + (B.fx1 - B.bx1) * t;
-      ctx.drawImage(tex, 0, y, tw, 1, x0, B.top + y / k, x1 - x0, 1 / k + 0.02);
-    }
-    // back rim
-    ctx.fillStyle = '#96643e';
-    ctx.beginPath(); ctx.moveTo(B.bx0, B.top); ctx.lineTo(B.bx1, B.top); ctx.lineTo(B.bx1 + 1, B.top + 6); ctx.lineTo(B.bx0 - 1, B.top + 6); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = '#d6a876'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(B.bx0, B.top); ctx.lineTo(B.bx1, B.top); ctx.stroke();
-    // side bevels
-    ctx.fillStyle = '#785032';
-    ctx.beginPath(); ctx.moveTo(B.bx0, B.top); ctx.lineTo(B.fx0, B.front); ctx.lineTo(B.fx0 - 3, B.front); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(B.bx1, B.top); ctx.lineTo(B.fx1, B.front); ctx.lineTo(B.fx1 + 3, B.front); ctx.closePath(); ctx.fill();
-    // front face
-    var fw = Math.round((B.fx1 - B.fx0) * k), fh = Math.round((B.bot - B.front) * k);
-    var ftex = woodTex(fw, fh, [140, 92, 56], 5 * k, 20, 9, 1.0, 0.86);
-    ctx.save(); rr(B.fx0, B.front - 10, B.fx1 - B.fx0, B.bot - B.front + 10, 8); ctx.clip();
-    ctx.drawImage(ftex, B.fx0, B.front, B.fx1 - B.fx0, B.bot - B.front); ctx.restore();
-    ctx.strokeStyle = '#ecc492'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(B.fx0, B.front); ctx.lineTo(B.fx1, B.front); ctx.stroke();
-    ctx.strokeStyle = '#644028'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(B.fx0 + 4, B.front + 3); ctx.lineTo(B.fx1 - 4, B.front + 3); ctx.stroke();
-    var lg = ctx.createLinearGradient(0, B.front + 3, 0, B.front + 10);
-    lg.addColorStop(0, 'rgba(40,22,10,0.4)'); lg.addColorStop(1, 'rgba(40,22,10,0)');
-    ctx.fillStyle = lg; ctx.fillRect(B.fx0, B.front + 3, B.fx1 - B.fx0, 7);
-    // brass number plates
+    ctx.scale(k, k); ctx.translate(0, -CTOP);
+    // soft contact shade along the back edge (customers stand right behind it)
+    var sg = ctx.createLinearGradient(0, CTOP, 0, CTOP + 22);
+    sg.addColorStop(0, 'rgba(46,26,12,0.32)'); sg.addColorStop(1, 'rgba(46,26,12,0)');
+    ctx.fillStyle = sg; ctx.fillRect(0, CTOP, LW, 22);
+    // warm pendant-lamp light pooling on the top, falling off to the front
+    var lg = ctx.createRadialGradient(270, 470, 10, 270, 470, 260);
+    lg.addColorStop(0, 'rgba(255,224,170,0.16)'); lg.addColorStop(1, 'rgba(255,224,170,0)');
+    ctx.fillStyle = lg; ctx.fillRect(0, CTOP, LW, CSURF - CTOP);
+    var fg = ctx.createLinearGradient(0, CSURF - 40, 0, CSURF);
+    fg.addColorStop(0, 'rgba(40,22,10,0)'); fg.addColorStop(1, 'rgba(40,22,10,0.12)');
+    ctx.fillStyle = fg; ctx.fillRect(0, CSURF - 40, LW, 40);
+    // subtle engraved spot numbers on the front lip
     SPOTS.forEach(function (s, i) {
-      var fx = s.x + (s.x - 195) * 0.06;
-      rr(fx - 11, B.front + 8, 22, B.bot - B.front - 13, 4); ctx.fillStyle = '#deb462'; ctx.fill();
-      ctx.strokeStyle = '#a07636'; ctx.lineWidth = 1; ctx.stroke();
-      text(String(i + 1), fx, (B.front + B.bot) / 2 + 1.5, 11, '#5c3c1e');
+      text(String(i + 1), s.x, (CSURF + CLIP) / 2 + 1, 10.5, 'rgba(36,18,8,0.45)', 'center', true);
+      text(String(i + 1), s.x, (CSURF + CLIP) / 2, 10.5, 'rgba(255,226,182,0.6)', 'center', true);
     });
-    // ingredient shelf
-    ctx.save(); ctx.shadowColor = 'rgba(30,18,10,0.5)'; ctx.shadowBlur = 8 * k; ctx.shadowOffsetY = 3 * k;
-    rr(8, SHELF.y0, LW - 16, SHELF.y1 - SHELF.y0, 22); ctx.fillStyle = '#765032'; ctx.fill(); ctx.restore();
-    ctx.strokeStyle = '#563822'; ctx.lineWidth = 2; rr(8, SHELF.y0, LW - 16, SHELF.y1 - SHELF.y0, 22); ctx.stroke();
-    rr(14, SHELF.y0 + 6, LW - 28, SHELF.y1 - SHELF.y0 - 12, 18); ctx.fillStyle = '#f5e8cf'; ctx.fill();
-    ctx.fillStyle = 'rgba(255,250,235,0.45)'; rr(20, SHELF.y0 + 9, LW - 40, 9, 5); ctx.fill();
-    text('食材拖到杯位，做好拖给客人', 195, SHELF.y0 + 22, 13, C.ink);
+    // shade under the lip onto the counter front
+    var ug = ctx.createLinearGradient(0, CLIP, 0, CLIP + 14);
+    ug.addColorStop(0, 'rgba(20,10,4,0.45)'); ug.addColorStop(1, 'rgba(20,10,4,0)');
+    ctx.fillStyle = ug; ctx.fillRect(0, CLIP, LW, 14);
+    // hint, carved into the counter front
+    ctx.save(); ctx.shadowColor = 'rgba(20,10,4,0.7)'; ctx.shadowBlur = 3; ctx.shadowOffsetY = 1;
+    text('食材拖到杯位，做好拖给客人', 195, SHELF.y0 + 22, 13, '#f3e2c2', 'center', true); ctx.restore();
+    // recessed shelf cut into the counter front
+    var nx = 10, ny = SHELF.y0 + 36, nw = LW - 20, nh = LH - ny + 30;
+    ctx.save(); rr(nx, ny, nw, nh, 16); ctx.clip();
+    var ng = ctx.createLinearGradient(0, ny, 0, LH);
+    ng.addColorStop(0, 'rgba(16,8,3,0.5)'); ng.addColorStop(1, 'rgba(16,8,3,0.3)');
+    ctx.fillStyle = ng; ctx.fillRect(nx, ny, nw, nh);
+    var ig = ctx.createLinearGradient(0, ny, 0, ny + 16);
+    ig.addColorStop(0, 'rgba(0,0,0,0.42)'); ig.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ig; ctx.fillRect(nx, ny, nw, 16);
+    [0, 1].forEach(function (side) {
+      var xg = ctx.createLinearGradient(side ? nx + nw : nx, 0, side ? nx + nw - 12 : nx + 12, 0);
+      xg.addColorStop(0, 'rgba(0,0,0,0.3)'); xg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = xg; ctx.fillRect(side ? nx + nw - 12 : nx, ny, 12, nh);
+    });
+    // shelf boards the tiles rest on
+    [ITEMS[0].y + ITEMS[0].h / 2 + 2, ITEMS[2].y + ITEMS[2].h / 2 + 2].forEach(function (by) {
+      var bg2 = ctx.createLinearGradient(0, by, 0, by + 7);
+      bg2.addColorStop(0, '#9c6c44'); bg2.addColorStop(1, '#5e3d25');
+      ctx.fillStyle = bg2; ctx.fillRect(nx, by, nw, 7);
+      ctx.fillStyle = 'rgba(255,222,176,0.35)'; ctx.fillRect(nx, by, nw, 1);
+      var bs = ctx.createLinearGradient(0, by + 7, 0, by + 15);
+      bs.addColorStop(0, 'rgba(0,0,0,0.3)'); bs.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = bs; ctx.fillRect(nx, by + 7, nw, 8);
+    });
+    ctx.restore();
+    // lit lower rim of the cut-out
+    ctx.strokeStyle = 'rgba(255,214,160,0.16)'; ctx.lineWidth = 1;
+    rr(nx - 0.5, ny - 0.5, nw + 1, nh + 1, 16.5); ctx.stroke();
     ctx = prev;
     return cv;
   }
+  function benchScaleK() { return clamp(Math.ceil(dpr * scale * 2) / 2, 1.5, 3); }
+  function drawCounterFront() { // the café's own counter, drawn over the customers' lower half
+    var k = benchScaleK();
+    if (imgReady('bg') && (!counterCache || counterK !== k)) {
+      try { counterCache = buildCounter(k); counterK = k; } catch (e) { counterCache = null; }
+    }
+    if (counterCache) ctx.drawImage(counterCache, 0, CTOP, LW, LH - CTOP);
+    else { ctx.fillStyle = C.wood; ctx.fillRect(0, CTOP, LW, LH - CTOP); }
+  }
   function drawBench() {
-    var k = clamp(Math.ceil(dpr * scale * 2) / 2, 1.5, 3);
+    var k = benchScaleK();
     if (!benchCache || benchK !== k) {
       try { benchCache = buildBench(k); benchK = k; } catch (e) { benchCache = null; }
     }
-    if (benchCache) ctx.drawImage(benchCache, 0, BENCH_Y0, LW, LH - BENCH_Y0);
-    else { ctx.fillStyle = '#7a5134'; ctx.fillRect(0, BENCH_Y0, LW, LH - BENCH_Y0); }
+    if (benchCache) ctx.drawImage(benchCache, 0, CTOP, LW, LH - CTOP);
   }
   function tagPill(cx, cy, s, fill, fg) {
     ctx.font = font(10.5, true); var w = ctx.measureText(s).width + 16;
@@ -1055,7 +1052,7 @@
     text(s, cx, cy, 10.5, fg);
   }
   function drawSpot(i, cup, hidden, hover, valid, demo) {
-    var s = SPOTS[i], rx = 48, ry = 18;
+    var s = SPOTS[i], rx = 46, ry = 16;
     var sh = S.spotShake[i] > 0 ? Math.sin(S.spotShake[i] * 60) * 4 * S.spotShake[i] / 0.35 : 0;
     var sx = s.x + sh, sy = s.y;
     ctx.save();
@@ -1070,18 +1067,16 @@
       }
     }
     var empty = !cup || hidden;
-    if (empty) {
-      ctx.fillStyle = 'rgba(214,168,116,0.5)';
-      ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(252,240,216,0.9)'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.ellipse(sx, sy, rx - 3, ry - 3, 0, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-      text('空杯位', sx, sy, 10.5, '#faeed6');
-    } else {
-      ctx.fillStyle = '#eedebe'; ctx.strokeStyle = '#b08a5c'; ctx.lineWidth = 1.2;
-      ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = '#d6be96'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.ellipse(sx, sy, rx - 6, ry - 4, 0, 0, Math.PI * 2); ctx.stroke();
-    }
+    // round cork coaster resting on the counter
+    ctx.save(); ctx.shadowColor = 'rgba(40,20,8,0.35)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
+    var cg = ctx.createRadialGradient(sx - 10, sy - 6, 4, sx, sy, rx);
+    cg.addColorStop(0, '#dcbd90'); cg.addColorStop(1, '#b88c5c');
+    ctx.fillStyle = cg; ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = 'rgba(96,60,30,0.45)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,238,206,0.4)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.ellipse(sx, sy, rx - 6, ry - 4, 0, 0, Math.PI * 2); ctx.stroke();
+    if (empty) text('空杯位', sx, sy + 0.5, 10.5, 'rgba(92,58,28,0.7)');
     if (hover) {
       ctx.strokeStyle = valid ? C.gold : C.coral; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.ellipse(sx, sy, rx, ry, 0, 0, Math.PI * 2); ctx.stroke();
@@ -1102,9 +1097,11 @@
     var sh = S.tileShake[it.name] > 0 ? Math.sin(S.tileShake[it.name] * 60) * 4 * S.tileShake[it.name] / 0.35 : 0;
     var cx = it.x + sh, cy = it.y, w = it.w, h = it.h;
     if (glow) softGlow(cx, cy, w, h, C.gold, 0.45 + 0.25 * (0.5 + 0.5 * Math.sin(S.elapsed * 7)), 14);
-    ctx.fillStyle = 'rgba(160,120,80,0.35)'; rr(cx - w / 2, cy - h / 2 + 3, w, h, 14); ctx.fill();
-    rr(cx - w / 2, cy - h / 2, w, h, 14); ctx.fillStyle = C.paper; ctx.fill();
-    ctx.strokeStyle = glow ? C.gold : '#d6c09c'; ctx.lineWidth = glow ? 2.5 : 1; ctx.stroke();
+    ctx.fillStyle = 'rgba(20,10,4,0.35)'; rr(cx - w / 2, cy - h / 2 + 2.5, w, h, 13); ctx.fill();
+    var tg = ctx.createLinearGradient(0, cy - h / 2, 0, cy + h / 2);
+    tg.addColorStop(0, '#fbf2df'); tg.addColorStop(1, '#efdfbf');
+    rr(cx - w / 2, cy - h / 2, w, h, 13); ctx.fillStyle = tg; ctx.fill();
+    ctx.strokeStyle = glow ? C.gold : 'rgba(122,82,46,0.3)'; ctx.lineWidth = glow ? 2.5 : 1; ctx.stroke();
     var a = dim ? 0.3 : 1;
     if (it.kind === 'size') {
       drawArt(it.name, cx - 36, cy, it.name === '大杯' ? 40 : 36, it.name === '大杯' ? 48 : 42, a);
@@ -1118,8 +1115,8 @@
     var b = TRASH, s = pressScale('trash');
     ctx.save(); ctx.translate(b.x, b.y); ctx.scale(s, s);
     if (hot) softGlow(0, 0, b.w, b.h, C.coral, 0.8, 10);
-    rr(-b.w / 2, -b.h / 2, b.w, b.h, 10); ctx.fillStyle = hot ? '#b9503f' : '#96765a'; ctx.fill();
-    ctx.strokeStyle = '#6e523a'; ctx.lineWidth = 1; ctx.stroke();
+    rr(-b.w / 2, -b.h / 2, b.w, b.h, 10); ctx.fillStyle = hot ? '#b9503f' : '#a0714c'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,222,176,0.35)'; ctx.lineWidth = 1; ctx.stroke();
     text('清', 0, -9, 11.5, '#fffcf6'); text('空', 0, 9, 11.5, '#fffcf6');
     ctx.restore();
   }
@@ -1484,6 +1481,11 @@
     drawSpot(2, null, false, false, false, { ready: false });
     // how to play
     var steps = [['大杯', '① 杯子拖到杯位（最多三杯一起做）'], ['红茶', '② 再拖茶底，然后拖小料'], ['珍珠', '③ 做好的杯子拖给点它的客人']];
+    // paper how-to note pinned over the shelf
+    ctx.save(); ctx.shadowColor = 'rgba(20,10,4,0.45)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+    var ng2 = ctx.createLinearGradient(0, 642, 0, 752);
+    ng2.addColorStop(0, '#fbf2df'); ng2.addColorStop(1, '#efdfbf');
+    rr(22, 642, 346, 108, 14); ctx.fillStyle = ng2; ctx.fill(); ctx.restore();
     steps.forEach(function (s, i) {
       var y = 662 + i * 34;
       drawArt(s[0], 46, y, 28, 28, 1);
@@ -1529,9 +1531,11 @@
     drawCustomer({ kind: 'deer', state: 'wait', t: 0 }, 336, 0.95);
     drawCustomer({ kind: 'fox', state: 'wait', t: 0 }, 92, 1.25);
     drawCounterFront();
-    drawCounterClean();
-    ctx.fillStyle = '#5c3e28';
-    ctx.fillRect(0, 556, LW, LH - 556);
+    if (!counterCache) {
+      drawCounterClean();
+      ctx.fillStyle = '#5c3e28';
+      ctx.fillRect(0, 556, LW, LH - 556);
+    }
     // cups row
     var n = clamp(S.served, 0, 5), tops = [['珍珠'], ['椰果'], ['珍珠', '布丁'], ['布丁'], ['珍珠']], teas = ['奶茶', '红茶', '奶茶', '绿茶', '奶茶'];
     var gap = 62, sx = 195 - (n - 1) * gap / 2;
